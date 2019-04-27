@@ -4,11 +4,12 @@ const chalk = require("chalk");
 const log = require("./log");
 
 
-function getId(path) {
-    return path.match(/\/([^/]+\/[^/]+)\.[^.]+$/).pop();
+function getId(path, pathGlob) {
+    const re = new RegExp(pathGlob.replace(/\/?$/, '/') + '([^\/]+(?:\/[^\/.]+)+)\.[^.]+$');
+    return path.match(re).pop();
 }
 
-function resolve(Handlebars, partialsGlob) {
+function resolve(Handlebars, partialsGlob, pathGlob) {
     let partials = [];
 
     if (partialsGlob == null) {
@@ -21,7 +22,7 @@ function resolve(Handlebars, partialsGlob) {
 
     const partialMap = {};
     partials.forEach((path) => {
-        partialMap[getId(path)] = path;
+        partialMap[getId(path, pathGlob)] = path;
     });
 
     return partialMap;

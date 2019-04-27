@@ -31,6 +31,7 @@ class HandlebarsPlugin {
 
     constructor(options) {
         this.options = Object.assign({
+            path: null,
             entry: null,
             output: null,
             data: {},
@@ -68,7 +69,7 @@ class HandlebarsPlugin {
      */
     loadPartials() {
         // register partials
-        const partials = partialUtils.resolve(Handlebars, this.options.partials);
+        const partials = partialUtils.resolve(Handlebars, this.options.partials, this.options.path);
         this.options.onBeforeAddPartials(Handlebars, partials);
         partialUtils.addMap(Handlebars, partials);
         // watch all partials for changes
@@ -278,33 +279,37 @@ class HandlebarsPlugin {
      * @param  {String} outputPath  - webpack output path for build results
      */
     compileEntryFile(sourcePath, outputPath) {
-        let targetFilepath = getTargetFilepath(sourcePath, this.options.output);
-        // fetch template content
-        let templateContent = this.readFile(sourcePath, "utf-8");
-        templateContent = this.options.onBeforeCompile(Handlebars, templateContent) || templateContent;
-        // create template
-        const template = Handlebars.compile(templateContent);
-        const data = this.options.onBeforeRender(Handlebars, this.data) || this.data;
-        // compile template
-        let result = template(data);
-        result = this.options.onBeforeSave(Handlebars, result, targetFilepath) || result;
+        try {
+            let targetFilepath = getTargetFilepath(sourcePath, this.options.output);
+            // fetch template content
+            let templateContent = this.readFile(sourcePath, "utf-8");
+            templateContent = this.options.onBeforeCompile(Handlebars, templateContent) || templateContent;
+            // create template
+            const template = Handlebars.compile(templateContent);
+            const data = this.options.onBeforeRender(Handlebars, this.data) || this.data;
+            // compile template
+            let result = template(data);
+            result = this.options.onBeforeSave(Handlebars, result, targetFilepath) || result;
+        
+            if (targetFilepath.includes(outputPath)) {
+                // change the destination path relative to webpacks output folder and emit it via webpack
+                targetFilepath = targetFilepath.replace(outputPath, "").replace(/^\/*/, "");
+                this.assetsToEmit[targetFilepath] = {
+                    source: () => result,
+                    size: () => result.length
+                };
 
-        if (targetFilepath.includes(outputPath)) {
-            // change the destination path relative to webpacks output folder and emit it via webpack
-            targetFilepath = targetFilepath.replace(outputPath, "").replace(/^\/*/, "");
-            this.assetsToEmit[targetFilepath] = {
-                source: () => result,
-                size: () => result.length
-            };
+            } else {
+                // @legacy: if the filepath lies outside the actual webpack destination folder, simply write that file.
+                // There is no wds-support here, because of watched assets being emitted again
+                fs.outputFileSync(targetFilepath, result, "utf-8");
+            }
 
-        } else {
-            // @legacy: if the filepath lies outside the actual webpack destination folder, simply write that file.
-            // There is no wds-support here, because of watched assets being emitted again
-            fs.outputFileSync(targetFilepath, result, "utf-8");
+            this.options.onDone(Handlebars, targetFilepath);
+            log(chalk.grey(`created output '${targetFilepath.replace(`${process.cwd()}/`, "")}'`));
+        } catch(e) {
+            log(chalk.red(e));
         }
-
-        this.options.onDone(Handlebars, targetFilepath);
-        log(chalk.grey(`created output '${targetFilepath.replace(`${process.cwd()}/`, "")}'`));
     }
 }
 
